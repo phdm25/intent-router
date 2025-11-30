@@ -1,17 +1,19 @@
 // -------------------------------------------------------------
 // ExecutionBuilder
 //
-// Converts a Route (logical plan) into a TxRequest (chain-specific
-// transaction ready to be submitted).
+// Converts a high-level Route (output of the router) into
+// a TxRequest that can be executed by ChainAdapter.
 //
-// ExecutionBuilder knows how to interpret route.executionPlan,
-// which is provider-specific.
+// We assume executionPlan has the following structure for EVM:
+// {
+//   type: "evm_swap",
+//   to: string,
+//   data: string,
+//   value: bigint
+// }
 //
-// Example:
-// - For UniswapV3: build swap calldata via router
-// - For 1inch: executionPlan already includes raw tx
-//
-// In MVP we will implement a simple builder with placeholder logic.
+// More executionPlan types (bridges, cross-chain, near, solana)
+// can be added later.
 // -------------------------------------------------------------
 
 import type { Intent, Route } from "../domain/types";
@@ -26,24 +28,32 @@ export interface ExecutionBuilder {
   build(intent: Intent, route: Route): Promise<BuiltTransaction>;
 }
 
-// MVP implementation — converts route.executionPlan into a TxRequest.
 export class SimpleExecutionBuilder implements ExecutionBuilder {
   async build(intent: Intent, route: Route): Promise<BuiltTransaction> {
-    // For MVP we assume executionPlan already contains:
-    // { to, data, value }
     const plan = route.executionPlan as {
+      type: string;
       to: string;
       data: string;
       value: bigint;
     };
 
+    if (!plan) {
+      throw new Error("Execution plan is missing");
+    }
+
+    if (plan.type !== "evm_swap") {
+      throw new Error(`Unsupported executionPlan type: ${plan.type}`);
+    }
+
+    const tx: TxRequest = {
+      to: plan.to,
+      data: plan.data,
+      value: plan.value ?? 0n,
+    };
+
     return {
       chain: route.chain,
-      tx: {
-        to: plan.to,
-        data: plan.data ?? "0x",
-        value: plan.value ?? 0n,
-      },
+      tx,
     };
   }
 }

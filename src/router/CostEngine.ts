@@ -26,6 +26,7 @@ export interface EvaluatedQuote {
 // predictive gas estimation, cross-chain risk assessment, etc.
 export interface CostEngine {
   evaluate(intent: Intent, quote: Quote): Promise<EvaluatedQuote>;
+  calculateScore(intent: Intent, quote: Quote): Promise<number>;
 }
 
 // MVP implementation of the cost engine.
@@ -45,5 +46,9 @@ export class SimpleCostEngine implements CostEngine {
     };
 
     return { quote, score, breakdown };
+  }
+  async calculateScore(intent: Intent, quote: Quote): Promise<number> {
+    // Чем больше amountOut — тем лучше
+    return Number(quote.amountOut);
   }
 }
