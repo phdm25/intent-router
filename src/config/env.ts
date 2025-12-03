@@ -4,31 +4,79 @@ import { loadEnv } from "./envLoader";
 // Load env from .env
 loadEnv();
 
-// Global env validation schema
-const EnvSchema = z.object({
-  NODE_ENV: z
-    .enum(["development", "production", "test"])
-    .default("development"),
+const EnvSchema = z
+  .object({
+    NODE_ENV: z
+      .enum(["development", "production", "test"])
+      .default("development"),
 
-  // API keys
-  ONEINCH_API_KEY: z.string().min(1, "ONEINCH_API_KEY is required"),
+    ONEINCH_API_KEY: z.string().min(1, "ONEINCH_API_KEY is required"),
 
-  // Network selection
-  NETWORK: z.enum(["mainnet", "testnet"]).default("mainnet"),
+    NETWORK: z.enum(["mainnet", "testnet"]).default("mainnet"),
 
-  // RPC URLs
-  RPC_URL_MAINNET: z.string().url("RPC_URL_MAINNET must be a valid URL"),
-  RPC_URL_TESTNET: z
-    .string()
-    .url("RPC_URL_TESTNET must be a valid URL")
-    .optional(),
+    RPC_URL_MAINNET: z.url({ message: "RPC_URL_MAINNET must be a valid URL" }),
 
-  // Executor wallet
-  EXECUTOR_ADDRESS: z.string().min(1, "EXECUTOR_ADDRESS is required"),
+    // testnet can be optional until validated conditionally
+    RPC_URL_TESTNET: z.string().optional(),
+    RPC_URL_ARBITRUM_TESTNET: z.string().optional(),
 
-  // App port (if running HTTP API)
-  PORT: z.string().default("3000").transform(Number),
-});
+    RPC_URL_ARBITRUM: z.url({
+      message: "RPC_URL_ARBITRUM must be a valid URL",
+    }),
+
+    PORT: z.string().default("3000").transform(Number),
+
+    EXECUTOR_PRIVATE_KEY: z
+      .string()
+      .startsWith("0x")
+      .length(66, "Private key must be 32 bytes + 0x"),
+
+    EXECUTOR_ADDRESS: z
+      .string()
+      .startsWith("0x")
+      .length(42, "Invalid EVM address"),
+  })
+  .superRefine((env, ctx) => {
+    const isDev = env.NODE_ENV === "development" || env.NODE_ENV === "test";
+
+    if (isDev) {
+      // validate testnet URLs
+      if (!env.RPC_URL_TESTNET) {
+        ctx.addIssue({
+          code: "custom",
+          message: "RPC_URL_TESTNET is required in development/test",
+          path: ["RPC_URL_TESTNET"],
+        });
+      } else {
+        // validate as URL
+        const urlCheck = z.url().safeParse(env.RPC_URL_TESTNET);
+        if (!urlCheck.success) {
+          ctx.addIssue({
+            code: "custom",
+            message: "RPC_URL_TESTNET must be a valid URL",
+            path: ["RPC_URL_TESTNET"],
+          });
+        }
+      }
+
+      if (!env.RPC_URL_ARBITRUM_TESTNET) {
+        ctx.addIssue({
+          code: "custom",
+          message: "RPC_URL_ARBITRUM_TESTNET is required in development/test",
+          path: ["RPC_URL_ARBITRUM_TESTNET"],
+        });
+      } else {
+        const urlCheck = z.url().safeParse(env.RPC_URL_ARBITRUM_TESTNET);
+        if (!urlCheck.success) {
+          ctx.addIssue({
+            code: "custom",
+            message: "RPC_URL_ARBITRUM_TESTNET must be a valid URL",
+            path: ["RPC_URL_ARBITRUM_TESTNET"],
+          });
+        }
+      }
+    }
+  });
 
 const parsed = EnvSchema.safeParse(process.env);
 

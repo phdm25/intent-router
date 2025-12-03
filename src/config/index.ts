@@ -1,7 +1,8 @@
-import { Env } from "./env";
-import { SelectedNetwork } from "./network.js";
+import { Env } from "./env.js";
+import { Networks } from "./network";
 
 export const AppConfig = {
   env: Env,
-  network: SelectedNetwork,
+  networks: Networks,
+  activeNetwork: Networks[Env.NETWORK],
 };

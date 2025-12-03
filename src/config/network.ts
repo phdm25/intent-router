@@ -1,24 +1,24 @@
 import { z } from "zod";
 import { Env } from "./env";
-import { mainnet, sepolia } from "viem/chains";
+import { mainnet, sepolia, arbitrum, arbitrumSepolia } from "viem/chains";
 import { ChainRefSchema } from "../domain/chainref.schema";
 
-// Zod schema for a single chain config
+// Zod schema for chain config
 const ChainConfigSchema = z.object({
   name: z.string(),
   chainRef: ChainRefSchema,
   rpcUrl: z.string().url(),
-
-  // viem chain object (we treat it as `any`, but validate existence)
   viemChain: z.any(),
 
-  // Dex contracts
   uniswap: z.object({
     quoterV2: z.string(),
     swapRouter02: z.string(),
   }),
 });
 
+// ----------------------
+// MAINNET
+// ----------------------
 const mainnetConfig = ChainConfigSchema.parse({
   name: "mainnet",
   chainRef: { type: "evm", id: 1 },
@@ -30,13 +30,44 @@ const mainnetConfig = ChainConfigSchema.parse({
   },
 });
 
+// ----------------------
+// TESTNET (Sepolia)
+// ----------------------
 const testnetConfig = ChainConfigSchema.parse({
   name: "testnet",
-  chainRef: { type: "evm", id: 11155111 }, // Sepolia
+  chainRef: { type: "evm", id: 11155111 },
   rpcUrl: Env.RPC_URL_TESTNET ?? "",
   viemChain: sepolia,
   uniswap: {
-    quoterV2: "0x0000000000000000000000000000000000000000", // placeholder
+    quoterV2: "0x0000000000000000000000000000000000000000",
+    swapRouter02: "0x0000000000000000000000000000000000000000",
+  },
+});
+
+// ----------------------
+// ARBITRUM MAINNET
+// ----------------------
+const arbitrumConfig = ChainConfigSchema.parse({
+  name: "arbitrum",
+  chainRef: { type: "evm", id: 42161 },
+  rpcUrl: Env.RPC_URL_ARBITRUM,
+  viemChain: arbitrum,
+  uniswap: {
+    quoterV2: "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6", // Quoter on Arbitrum
+    swapRouter02: "0x68B3465833fb72A70ecDF485E0e4C7bD8665Fc45", // same router
+  },
+});
+
+// ----------------------
+// ARBITRUM TESTNET (Sepolia)
+// ----------------------
+const arbitrumTestnetConfig = ChainConfigSchema.parse({
+  name: "arbitrum-testnet",
+  chainRef: { type: "evm", id: 421614 },
+  rpcUrl: Env.RPC_URL_ARBITRUM_TESTNET,
+  viemChain: arbitrumSepolia,
+  uniswap: {
+    quoterV2: "0x0000000000000000000000000000000000000000",
     swapRouter02: "0x0000000000000000000000000000000000000000",
   },
 });
@@ -44,6 +75,8 @@ const testnetConfig = ChainConfigSchema.parse({
 export const Networks = {
   mainnet: mainnetConfig,
   testnet: testnetConfig,
+  arbitrum: arbitrumConfig,
+  "arbitrum-testnet": arbitrumTestnetConfig,
 };
 
-export const SelectedNetwork = Networks[Env.NETWORK];
+export type ChainConfig = z.infer<typeof ChainConfigSchema>;

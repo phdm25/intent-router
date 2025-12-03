@@ -3,7 +3,8 @@
 // Loaded through AppConfig.network (Zod validated)
 // -------------------------------------------------------------
 
-import { AppConfig } from "./index.js";
+import type { ChainRef } from "../domain/chainref.schema.js";
+import { Networks, type ChainConfig } from "./network";
 
 // ABI fragments
 export const UNISWAP_QUOTER_V2_ABI = [
@@ -51,7 +52,38 @@ export const UNISWAP_SWAP_ROUTER_02_ABI = [
 export const UNISWAP_FEE_TIERS = [500, 3000, 10000] as const;
 
 // Network-specific addresses from AppConfig.network
-export const UNISWAP_ADDRESSES = {
-  QUOTER_V2: AppConfig.network.uniswap.quoterV2,
-  ROUTER_02: AppConfig.network.uniswap.swapRouter02,
-} as const;
+
+/**
+ * Find ChainConfig by ChainRef (type + id).
+ */
+export function getChainConfigByRef(chain: ChainRef): ChainConfig {
+  const config = Object.values(Networks).find(
+    (c) => c.chainRef.type === chain.type && c.chainRef.id === chain.id
+  );
+
+  if (!config) {
+    throw new Error(
+      `[UniswapConfig] No chain config found for ${chain.type}:${chain.id}`
+    );
+  }
+
+  return config;
+}
+
+/**
+ * Returns Uniswap addresses (QuoterV2 + SwapRouter02) for a specific chain.
+ */
+export function getUniswapAddresses(chain: ChainRef) {
+  const cfg = getChainConfigByRef(chain);
+
+  if (!cfg.uniswap) {
+    throw new Error(
+      `[UniswapConfig] Uniswap is not configured for chain ${cfg.name} (${cfg.chainRef.id})`
+    );
+  }
+
+  return {
+    quoterV2: cfg.uniswap.quoterV2,
+    swapRouter02: cfg.uniswap.swapRouter02,
+  } as const;
+}
