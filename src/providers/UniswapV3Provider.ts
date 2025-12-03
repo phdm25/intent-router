@@ -2,13 +2,12 @@ import { BaseProvider } from "./BaseProvider.js";
 import type { Intent, Quote, Route } from "../domain/types";
 
 import {
-  UNISWAP_ADDRESSES,
   UNISWAP_FEE_TIERS,
   UNISWAP_QUOTER_V2_ABI,
   UNISWAP_SWAP_ROUTER_02_ABI,
 } from "../config/uniswap.js";
 
-import { AppConfig } from "../config/index.js";
+import { getChainConfigByRef, getUniswapAddresses } from "../config/uniswap.js";
 
 import {
   createPublicClient,
@@ -17,6 +16,8 @@ import {
   Hex,
   Address,
 } from "viem";
+import { ExecutionPlan } from "../domain/executionPlan";
+import { AppConfig } from "../config/index.js";
 
 // Internal helper type
 interface BestQuote {
@@ -27,20 +28,21 @@ interface BestQuote {
 export class UniswapV3Provider extends BaseProvider {
   id = "uniswap-v3" as const;
 
-  private readonly client = createPublicClient({
-    chain: AppConfig.network.viemChain,
-    transport: http(AppConfig.network.rpcUrl),
-  });
-
-  private readonly quoter = UNISWAP_ADDRESSES.QUOTER_V2;
-  private readonly router = UNISWAP_ADDRESSES.ROUTER_02;
-
   supports(intent: Intent): boolean {
     return intent.fromToken.chain.type === "evm";
   }
 
   async getQuote(intent: Intent): Promise<Quote | null> {
     this.validateIntent(intent);
+
+    const chainRef = intent.fromToken.chain;
+    const chainCfg = getChainConfigByRef(chainRef);
+    const { quoterV2 } = getUniswapAddresses(chainRef);
+
+    const client = createPublicClient({
+      chain: chainCfg.viemChain,
+      transport: http(chainCfg.rpcUrl),
+    });
 
     let best: BestQuote | null = null;
 
@@ -58,8 +60,8 @@ export class UniswapV3Provider extends BaseProvider {
           ],
         });
 
-        const result = await this.client.call({
-          to: this.quoter,
+        const result = await client.call({
+          to: quoterV2 as Address,
           data,
         });
 
@@ -77,7 +79,7 @@ export class UniswapV3Provider extends BaseProvider {
 
     return {
       providerId: this.id,
-      chain: intent.fromToken.chain,
+      chain: chainRef,
       fromToken: intent.fromToken,
       toToken: intent.toToken,
       amountIn: intent.amountIn,
@@ -86,13 +88,19 @@ export class UniswapV3Provider extends BaseProvider {
     };
   }
 
-  async buildRoute(intent: Intent, quote: Quote): Promise<Route> {
+  async buildRoute(
+    intent: Intent,
+    quote: Quote,
+    score: number
+  ): Promise<Route> {
     this.validateIntent(intent);
 
     const raw = quote.raw as BestQuote;
-    const slippage = BigInt(intent.maxSlippageBps);
+    const chainRef = quote.chain;
+    const { swapRouter02 } = getUniswapAddresses(chainRef);
 
-    const minOut = (quote.amountOut * (10_000n - slippage)) / 10_000n;
+    const slippageBps = BigInt(intent.maxSlippageBps);
+    const minOut = (quote.amountOut * (10_000n - slippageBps)) / 10_000n;
 
     const calldata = encodeFunctionData({
       abi: UNISWAP_SWAP_ROUTER_02_ABI,
@@ -102,7 +110,7 @@ export class UniswapV3Provider extends BaseProvider {
           tokenIn: quote.fromToken.address as Address,
           tokenOut: quote.toToken.address as Address,
           fee: raw.fee,
-          recipient: AppConfig.env.EXECUTOR_ADDRESS,
+          recipient: AppConfig.env.EXECUTOR_ADDRESS as Address,
           deadline: BigInt(intent.deadline),
           amountIn: quote.amountIn,
           amountOutMinimum: minOut,
@@ -111,18 +119,20 @@ export class UniswapV3Provider extends BaseProvider {
       ],
     });
 
+    const plan: ExecutionPlan = {
+      type: "evm_swap",
+      chain: chainRef, // 👈 ключевой момент: сеть берём из quote.chain
+      to: swapRouter02,
+      data: calldata,
+      value: 0n,
+    };
+
     return {
       providerId: this.id,
-      chain: quote.chain,
       amountIn: quote.amountIn,
       amountOut: quote.amountOut,
-      totalCostScore: Number(quote.amountOut),
-      executionPlan: {
-        type: "evm_swap",
-        to: this.router,
-        data: calldata,
-        value: 0n,
-      },
+      totalCostScore: score,
+      executionPlans: [plan], // массив шагов, пока один
     };
   }
 }

@@ -6,6 +6,7 @@
 export { Intent } from "./intent.schema";
 import { Token as TokenType } from "./token.schema";
 import { ChainRef as ChainRefType } from "./chainref.schema";
+import { ExecutionPlan } from "./executionPlan";
 
 export type ChainType = "evm" | "near" | "solana";
 
@@ -44,11 +45,10 @@ export interface CostBreakdown {
 // Contains normalized info that the executor will use.
 export interface Route {
   providerId: string;
-  chain: ChainRef;
   amountIn: bigint;
   amountOut: bigint;
-  totalCostScore: number; // Lower = better
-  executionPlan: unknown; // Provider-specific data required to build the final transaction
+  totalCostScore: number; // lower = better
+  executionPlans: ExecutionPlan[];
 }
 
 // ---------------------------------------------

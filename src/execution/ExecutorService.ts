@@ -27,8 +27,13 @@ export class ExecutorService {
     return adapter;
   }
 
-  async execute(tx: BuiltTransaction): Promise<TxReceipt> {
-    const adapter = this.getAdapter(tx.chain.type, tx.chain.id);
-    return adapter.sendTransaction(tx.tx);
+  async execute(txs: BuiltTransaction[]) {
+    for (const step of txs) {
+      const adapterKey = `${step.chain.type}:${step.chain.id}`;
+      const adapter = this.adapters.get(adapterKey);
+      if (!adapter) throw new Error(`No adapter for ${adapterKey}`);
+
+      await adapter.sendTransaction(step.tx);
+    }
   }
 }

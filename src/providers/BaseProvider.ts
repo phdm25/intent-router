@@ -17,7 +17,11 @@ export abstract class BaseProvider implements RouteProvider {
 
   abstract getQuote(intent: Intent): Promise<Quote | null>;
 
-  abstract buildRoute(intent: Intent, quote: Quote): Promise<Route>;
+  abstract buildRoute(
+    intent: Intent,
+    quote: Quote,
+    score: number
+  ): Promise<Route>;
 
   /** Common validation for all providers */
   protected validateIntent(intent: Intent) {

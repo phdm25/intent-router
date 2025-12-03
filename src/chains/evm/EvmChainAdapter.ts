@@ -1,45 +1,78 @@
-// -------------------------------------------------------------
-// EvmChainAdapter
-//
-// MVP EVM implementation of ChainAdapter.
-// For now, this is a lightweight skeleton using simple
-// placeholder logic.
-//
-// Later you can:
-// - Inject viem PublicClient + WalletClient
-// - Add support for EIP-1559 gas
-// - Add batching, retries, private mempool, etc.
-// -------------------------------------------------------------
+import type { TxRequest, TxReceipt, ChainAdapter } from "../ChainAdapter";
+import type { ChainRef } from "../../domain/types.js";
+import type { Chain, Account } from "viem";
 
-import type { ChainAdapter, TxRequest, TxReceipt } from "../ChainAdapter";
-import type { ChainRef } from "../../domain/types";
+import { createWalletClient, createPublicClient, http } from "viem";
 
 export class EvmChainAdapter implements ChainAdapter {
+  private readonly publicClient;
+  private readonly walletClient;
+
+  /**
+   * @param chain - internal chain reference in your own DSL  (e.g. { type: "evm", id: 42161 })
+   * @param viemChain - VIEM Chain object (e.g. arbitrum, mainnet, optimism)
+   * @param rpcUrl - network RPC url
+   * @param account - executor EVM account
+   */
   constructor(
     public readonly chain: ChainRef,
-    // TODO: inject real viem clients here
-    private readonly dummySender: string = "0x0000000000000000000000000000000000000000"
-  ) {}
+    private readonly viemChain: Chain,
+    private readonly rpcUrl: string,
+    private readonly account: Account
+  ) {
+    // Public client for reads + gas estimation
+    this.publicClient = createPublicClient({
+      chain: viemChain,
+      transport: http(rpcUrl),
+    });
 
+    // Wallet client for sending transactions
+    this.walletClient = createWalletClient({
+      chain: viemChain,
+      transport: http(rpcUrl),
+      account,
+    });
+  }
+
+  // ----------------------------------------------------------------------
+  // 1) Estimate gas
+  // ----------------------------------------------------------------------
   async estimateGas(tx: TxRequest): Promise<bigint> {
-    // Placeholder logic — replace with viem.estimateGas()
-    console.log(`[EvmChainAdapter] estimateGas() called for ${tx.to}`);
-    return 200000n;
+    return await this.publicClient.estimateGas({
+      account: this.account.address,
+      to: tx.to,
+      data: tx.data,
+      value: tx.value,
+    });
   }
 
+  // ----------------------------------------------------------------------
+  // 2) Gas price (EIP-1559 or legacy)
+  // ----------------------------------------------------------------------
   async getGasPrice(): Promise<bigint> {
-    // Placeholder — replace with viem.getGasPrice()
-    return 30_000_000_000n;
+    return await this.publicClient.getGasPrice();
   }
 
+  // ----------------------------------------------------------------------
+  // 3) Send transaction (correct multi-chain support)
+  // ----------------------------------------------------------------------
   async sendTransaction(tx: TxRequest): Promise<TxReceipt> {
-    // Placeholder — replace with wallet.sendTransaction()
-    console.log(`[EvmChainAdapter] sendTransaction() → dummy execution`);
-    const mockHash = "0x" + Math.random().toString(16).slice(2).padEnd(64, "0");
+    // 👉 IMPORTANT: chain MUST be viemChain from constructor
+    const hash = await this.walletClient.sendTransaction({
+      chain: this.viemChain,
+      account: this.account,
+      to: tx.to as `0x${string}`,
+      data: tx.data as `0x${string}`,
+      value: tx.value,
+    });
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+
     return {
-      txHash: mockHash,
-      success: true,
-      blockNumber: 123456,
+      hash,
+      blockNumber: receipt.blockNumber,
+      status: receipt.status === "success" ? "success" : "reverted",
+      gasUsed: receipt.gasUsed,
     };
   }
 }

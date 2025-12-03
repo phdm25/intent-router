@@ -18,42 +18,26 @@
 
 import type { Intent, Route } from "../domain/types";
 import type { TxRequest } from "../chains/ChainAdapter";
+import { ChainRef } from "../domain/chainref.schema";
 
 export interface BuiltTransaction {
-  chain: Route["chain"];
+  chain: ChainRef;
   tx: TxRequest;
 }
 
 export interface ExecutionBuilder {
-  build(intent: Intent, route: Route): Promise<BuiltTransaction>;
+  build(intent: Intent, route: Route): Promise<BuiltTransaction[]>;
 }
 
-export class SimpleExecutionBuilder implements ExecutionBuilder {
-  async build(intent: Intent, route: Route): Promise<BuiltTransaction> {
-    const plan = route.executionPlan as {
-      type: string;
-      to: string;
-      data: string;
-      value: bigint;
-    };
-
-    if (!plan) {
-      throw new Error("Execution plan is missing");
-    }
-
-    if (plan.type !== "evm_swap") {
-      throw new Error(`Unsupported executionPlan type: ${plan.type}`);
-    }
-
-    const tx: TxRequest = {
-      to: plan.to,
-      data: plan.data,
-      value: plan.value ?? 0n,
-    };
-
-    return {
-      chain: route.chain,
-      tx,
-    };
+export class MultiStepExecutionBuilder implements ExecutionBuilder {
+  async build(intent: Intent, route: Route): Promise<BuiltTransaction[]> {
+    return route.executionPlans.map((step) => ({
+      chain: step.chain,
+      tx: {
+        to: step.to,
+        data: step.data,
+        value: step.value,
+      },
+    }));
   }
 }

@@ -2,8 +2,8 @@ import { BaseProvider } from "./BaseProvider.js";
 import type { Intent, Quote, Route } from "../domain/types";
 
 import { ONEINCH_API_BASE, ONEINCH_HEADERS } from "../config/oneinch.js";
-
 import { AppConfig } from "../config/index.js";
+import { ExecutionPlan } from "../domain/executionPlan.js";
 
 export class OneInchProvider extends BaseProvider {
   id = "1inch" as const;
@@ -39,7 +39,11 @@ export class OneInchProvider extends BaseProvider {
     };
   }
 
-  async buildRoute(intent: Intent, quote: Quote): Promise<Route> {
+  async buildRoute(
+    intent: Intent,
+    quote: Quote,
+    score: number
+  ): Promise<Route> {
     this.validateIntent(intent);
 
     const chainId = intent.fromToken.chain.id;
@@ -58,18 +62,20 @@ export class OneInchProvider extends BaseProvider {
 
     const data = await res.json();
 
+    const plan: ExecutionPlan = {
+      type: "evm_swap",
+      chain: quote.chain, // сеть берём из котировки
+      to: data.tx.to,
+      data: data.tx.data,
+      value: BigInt(data.tx.value ?? "0"),
+    };
+
     return {
       providerId: this.id,
-      chain: quote.chain,
       amountIn: quote.amountIn,
       amountOut: quote.amountOut,
-      totalCostScore: Number(quote.amountOut),
-      executionPlan: {
-        type: "evm_swap",
-        to: data.tx.to,
-        data: data.tx.data,
-        value: BigInt(data.tx.value ?? "0"),
-      },
+      totalCostScore: score, // тоже используем score
+      executionPlans: [plan], // 🔥 массив
     };
   }
 }

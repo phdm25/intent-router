@@ -34,5 +34,5 @@ export interface RouteProvider {
 
   // Converts a Quote into a complete Route object,
   // including an executionPlan that ExecutionBuilder will later use.
-  buildRoute(intent: Intent, quote: Quote): Promise<Route>;
+  buildRoute(intent: Intent, quote: Quote, score: number): Promise<Route>;
 }

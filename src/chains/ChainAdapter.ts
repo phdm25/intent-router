@@ -24,9 +24,10 @@ export interface TxRequest {
 }
 
 export interface TxReceipt {
-  txHash: string;
-  success: boolean;
-  blockNumber: number | bigint;
+  hash: `0x${string}`;
+  blockNumber: bigint;
+  status: "success" | "reverted";
+  gasUsed: bigint;
 }
 
 export interface ChainAdapter {
