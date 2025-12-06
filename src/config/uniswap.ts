@@ -4,7 +4,7 @@
 // -------------------------------------------------------------
 
 import type { ChainRef } from "../domain/chainref.schema.js";
-import { Networks, type ChainConfig } from "./network";
+import { getChainConfigByRef, Networks, type ChainConfig } from "./network";
 
 // ABI fragments
 export const UNISWAP_QUOTER_V2_ABI = [
@@ -50,25 +50,6 @@ export const UNISWAP_SWAP_ROUTER_02_ABI = [
 
 // Fee tiers we will test
 export const UNISWAP_FEE_TIERS = [500, 3000, 10000] as const;
-
-// Network-specific addresses from AppConfig.network
-
-/**
- * Find ChainConfig by ChainRef (type + id).
- */
-export function getChainConfigByRef(chain: ChainRef): ChainConfig {
-  const config = Object.values(Networks).find(
-    (c) => c.chainRef.type === chain.type && c.chainRef.id === chain.id
-  );
-
-  if (!config) {
-    throw new Error(
-      `[UniswapConfig] No chain config found for ${chain.type}:${chain.id}`
-    );
-  }
-
-  return config;
-}
 
 /**
  * Returns Uniswap addresses (QuoterV2 + SwapRouter02) for a specific chain.

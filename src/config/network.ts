@@ -53,8 +53,8 @@ const arbitrumConfig = ChainConfigSchema.parse({
   rpcUrl: Env.RPC_URL_ARBITRUM,
   viemChain: arbitrum,
   uniswap: {
-    quoterV2: "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6", // Quoter on Arbitrum
-    swapRouter02: "0x68B3465833fb72A70ecDF485E0e4C7bD8665Fc45", // same router
+    quoterV2: "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
+    swapRouter02: "0x68B3465833fb72A70ecDF485E0e4C7bD8665Fc45",
   },
 });
 
@@ -72,6 +72,7 @@ const arbitrumTestnetConfig = ChainConfigSchema.parse({
   },
 });
 
+// All networks
 export const Networks = {
   mainnet: mainnetConfig,
   testnet: testnetConfig,
@@ -80,3 +81,22 @@ export const Networks = {
 };
 
 export type ChainConfig = z.infer<typeof ChainConfigSchema>;
+
+// -----------------------------------------------------
+// 🔥 getChainConfigByRef — the function you need
+// -----------------------------------------------------
+export function getChainConfigByRef(
+  chainRef: z.infer<typeof ChainRefSchema>
+): ChainConfig {
+  const cfg = Object.values(Networks).find(
+    (n) => n.chainRef.type === chainRef.type && n.chainRef.id === chainRef.id
+  );
+
+  if (!cfg) {
+    throw new Error(
+      `[Networks] No ChainConfig found for chain ${chainRef.type}:${chainRef.id}`
+    );
+  }
+
+  return cfg;
+}

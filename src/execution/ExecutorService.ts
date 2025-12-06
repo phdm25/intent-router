@@ -1,39 +1,33 @@
-// -------------------------------------------------------------
-// ExecutorService
-//
-// Executes a BuiltTransaction using the appropriate ChainAdapter.
-// Later can support:
-// - Multiple chains
-// - Execution strategies (private mempool, batching, retry)
-// - Solver network / off-chain competition
-// -------------------------------------------------------------
-
-import type { BuiltTransaction } from "./ExecutionBuilder";
+import type { BuiltStep } from "./ExecutionBuilder";
 import type { ChainAdapter, TxReceipt } from "../chains/ChainAdapter";
+import type { ChainRef } from "../domain/chainref.schema";
 
+/**
+ * ExecutorService takes built raw transactions and actually broadcasts them.
+ */
 export class ExecutorService {
   constructor(private readonly adapters: Map<string, ChainAdapter>) {}
 
-  // Identifies the correct ChainAdapter by chainRef
-  private getAdapter(
-    chainType: string,
-    chainId: string | number
-  ): ChainAdapter {
-    const key = `${chainType}:${chainId}`;
+  private getAdapter(chain: ChainRef): ChainAdapter {
+    const key = `${chain.type}:${chain.id}`;
     const adapter = this.adapters.get(key);
+
     if (!adapter) {
-      throw new Error(`No ChainAdapter registered for ${key}`);
+      throw new Error(`[Executor] No adapter registered for chain ${key}`);
     }
+
     return adapter;
   }
 
-  async execute(txs: BuiltTransaction[]) {
-    for (const step of txs) {
-      const adapterKey = `${step.chain.type}:${step.chain.id}`;
-      const adapter = this.adapters.get(adapterKey);
-      if (!adapter) throw new Error(`No adapter for ${adapterKey}`);
+  async execute(steps: BuiltStep[]): Promise<TxReceipt[]> {
+    const receipts: TxReceipt[] = [];
 
-      await adapter.sendTransaction(step.tx);
+    for (const step of steps) {
+      const adapter = this.getAdapter(step.plan.chain);
+      const receipt = await adapter.sendRawTx(step.rawTx);
+      receipts.push(receipt);
     }
+
+    return receipts;
   }
 }

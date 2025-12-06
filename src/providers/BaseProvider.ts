@@ -1,14 +1,6 @@
-// -------------------------------------------------------------
-// BaseProvider — common foundation for all providers.
-//
-// - id must be unique
-// - supports(), getQuote(), buildRoute() must be implemented
-// - includes common helper: validate intent structure
-// -------------------------------------------------------------
-
 import type { Intent, Quote, Route } from "../domain/types";
-import type { RouteProvider } from "../router/RouteProvider";
 import { IntentSchema } from "../domain/intent.schema";
+import type { RouteProvider } from "../router/RouteProvider";
 
 export abstract class BaseProvider implements RouteProvider {
   abstract id: string;
@@ -23,7 +15,9 @@ export abstract class BaseProvider implements RouteProvider {
     score: number
   ): Promise<Route>;
 
-  /** Common validation for all providers */
+  /**
+   * Common intent validation for all providers.
+   */
   protected validateIntent(intent: Intent) {
     const parsed = IntentSchema.safeParse(intent);
     if (!parsed.success) {

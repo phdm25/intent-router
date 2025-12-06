@@ -1,13 +1,14 @@
-import { BaseProvider } from "./BaseProvider.js";
+import { BaseProvider } from "./BaseProvider";
 import type { Intent, Quote, Route } from "../domain/types";
 
 import {
   UNISWAP_FEE_TIERS,
   UNISWAP_QUOTER_V2_ABI,
   UNISWAP_SWAP_ROUTER_02_ABI,
-} from "../config/uniswap.js";
+  getUniswapAddresses,
+} from "../config/uniswap";
 
-import { getChainConfigByRef, getUniswapAddresses } from "../config/uniswap.js";
+import { AppConfig } from "../config/index";
 
 import {
   createPublicClient,
@@ -16,8 +17,7 @@ import {
   Hex,
   Address,
 } from "viem";
-import { ExecutionPlan } from "../domain/executionPlan";
-import { AppConfig } from "../config/index.js";
+import { getChainConfigByRef } from "../config/network";
 
 // Internal helper type
 interface BestQuote {
@@ -25,23 +25,32 @@ interface BestQuote {
   amountOut: bigint;
 }
 
+/**
+ * UniswapV3Provider works only on EVM single-chain swaps.
+ */
 export class UniswapV3Provider extends BaseProvider {
   id = "uniswap-v3" as const;
 
   supports(intent: Intent): boolean {
-    return intent.fromToken.chain.type === "evm";
+    const isSameChain =
+      intent.fromChain.type === intent.toChain.type &&
+      intent.fromChain.id === intent.toChain.id;
+
+    const isEvm = intent.fromChain.type === "evm";
+
+    return isEvm && isSameChain;
   }
 
   async getQuote(intent: Intent): Promise<Quote | null> {
     this.validateIntent(intent);
 
-    const chainRef = intent.fromToken.chain;
-    const chainCfg = getChainConfigByRef(chainRef);
+    const chainRef = intent.fromChain;
+    const cfg = getChainConfigByRef(chainRef);
     const { quoterV2 } = getUniswapAddresses(chainRef);
 
     const client = createPublicClient({
-      chain: chainCfg.viemChain,
-      transport: http(chainCfg.rpcUrl),
+      chain: cfg.viemChain,
+      transport: http(cfg.rpcUrl),
     });
 
     let best: BestQuote | null = null;
@@ -96,11 +105,11 @@ export class UniswapV3Provider extends BaseProvider {
     this.validateIntent(intent);
 
     const raw = quote.raw as BestQuote;
-    const chainRef = quote.chain;
-    const { swapRouter02 } = getUniswapAddresses(chainRef);
 
     const slippageBps = BigInt(intent.maxSlippageBps);
     const minOut = (quote.amountOut * (10_000n - slippageBps)) / 10_000n;
+
+    const { swapRouter02 } = getUniswapAddresses(quote.chain);
 
     const calldata = encodeFunctionData({
       abi: UNISWAP_SWAP_ROUTER_02_ABI,
@@ -119,9 +128,10 @@ export class UniswapV3Provider extends BaseProvider {
       ],
     });
 
-    const plan: ExecutionPlan = {
-      type: "evm_swap",
-      chain: chainRef, // 👈 ключевой момент: сеть берём из quote.chain
+    const plan = {
+      providerId: this.id,
+      type: "evm_swap" as const,
+      chain: quote.chain,
       to: swapRouter02,
       data: calldata,
       value: 0n,
@@ -132,7 +142,7 @@ export class UniswapV3Provider extends BaseProvider {
       amountIn: quote.amountIn,
       amountOut: quote.amountOut,
       totalCostScore: score,
-      executionPlans: [plan], // массив шагов, пока один
+      executionPlans: [plan],
     };
   }
 }

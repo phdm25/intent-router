@@ -1,41 +1,37 @@
-// -------------------------------------------------------------
-// ChainAdapter Interface
-//
-// Abstracts blockchain-specific operations such as:
-// - Sending a transaction
-// - Estimating gas
-// - Fetching gas price
-//
-// Multiple implementations:
-// - EvmChainAdapter (MVP)
-// - NearChainAdapter (future)
-// - SolanaChainAdapter (future)
-//
-// The rest of the system interacts with ChainAdapter without
-// knowing anything about the underlying chain.
-// -------------------------------------------------------------
-
-import type { ChainRef } from "../domain/types";
-
-export interface TxRequest {
-  to: string;
-  data: string;
-  value: bigint;
-}
+import type { ChainRef } from "../domain/chainref.schema";
+import type { ExecutionPlan } from "../domain/executionPlan";
 
 export interface TxReceipt {
-  hash: `0x${string}`;
-  blockNumber: bigint;
+  hash: string;
   status: "success" | "reverted";
-  gasUsed: bigint;
+  blockNumber?: bigint;
+  gasUsed?: bigint;
 }
 
+// RawTx is intentionally abstract. Each adapter defines its own shape.
+export type RawTx = unknown;
+
+/**
+ * ChainAdapter is responsible for turning an ExecutionPlan into a real
+ * blockchain transaction (build + send) for a specific chain family.
+ */
 export interface ChainAdapter {
   readonly chain: ChainRef;
 
-  estimateGas(tx: TxRequest): Promise<bigint>;
-  getGasPrice(): Promise<bigint>;
+  /**
+   * Whether this adapter can handle the given execution plan.
+   * For example EVM adapter will check plan.chain.type === "evm"
+   * and plan.type is one of the EVM-specific types.
+   */
+  supports(plan: ExecutionPlan): boolean;
 
-  // Sends a raw transaction and returns its receipt.
-  sendTransaction(tx: TxRequest): Promise<TxReceipt>;
+  /**
+   * Build a chain-specific raw transaction from execution plan.
+   */
+  buildRawTx(plan: ExecutionPlan): Promise<RawTx>;
+
+  /**
+   * Broadcast raw transaction to the network and return receipt.
+   */
+  sendRawTx(raw: RawTx): Promise<TxReceipt>;
 }

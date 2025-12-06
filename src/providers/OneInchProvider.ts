@@ -1,21 +1,29 @@
-import { BaseProvider } from "./BaseProvider.js";
+import { BaseProvider } from "./BaseProvider";
 import type { Intent, Quote, Route } from "../domain/types";
 
-import { ONEINCH_API_BASE, ONEINCH_HEADERS } from "../config/oneinch.js";
-import { AppConfig } from "../config/index.js";
-import { ExecutionPlan } from "../domain/executionPlan.js";
+import { ONEINCH_API_BASE, ONEINCH_HEADERS } from "../config/oneinch";
+import { AppConfig } from "../config/index";
 
+/**
+ * OneInchProvider works only on EVM single-chain swaps.
+ */
 export class OneInchProvider extends BaseProvider {
   id = "1inch" as const;
 
   supports(intent: Intent): boolean {
-    return intent.fromToken.chain.type === "evm";
+    const isSameChain =
+      intent.fromChain.type === intent.toChain.type &&
+      intent.fromChain.id === intent.toChain.id;
+
+    const isEvm = intent.fromChain.type === "evm";
+
+    return isEvm && isSameChain;
   }
 
   async getQuote(intent: Intent): Promise<Quote | null> {
     this.validateIntent(intent);
 
-    const chainId = intent.fromToken.chain.id;
+    const chainId = intent.fromChain.id;
 
     const url =
       `${ONEINCH_API_BASE}/${chainId}/quote` +
@@ -30,7 +38,7 @@ export class OneInchProvider extends BaseProvider {
 
     return {
       providerId: this.id,
-      chain: intent.fromToken.chain,
+      chain: intent.fromChain,
       fromToken: intent.fromToken,
       toToken: intent.toToken,
       amountIn: intent.amountIn,
@@ -46,7 +54,7 @@ export class OneInchProvider extends BaseProvider {
   ): Promise<Route> {
     this.validateIntent(intent);
 
-    const chainId = intent.fromToken.chain.id;
+    const chainId = quote.chain.id;
     const slippagePercent = intent.maxSlippageBps / 100;
 
     const url =
@@ -62,9 +70,10 @@ export class OneInchProvider extends BaseProvider {
 
     const data = await res.json();
 
-    const plan: ExecutionPlan = {
-      type: "evm_swap",
-      chain: quote.chain, // сеть берём из котировки
+    const plan = {
+      providerId: this.id,
+      type: "evm_swap" as const,
+      chain: quote.chain,
       to: data.tx.to,
       data: data.tx.data,
       value: BigInt(data.tx.value ?? "0"),
@@ -74,8 +83,8 @@ export class OneInchProvider extends BaseProvider {
       providerId: this.id,
       amountIn: quote.amountIn,
       amountOut: quote.amountOut,
-      totalCostScore: score, // тоже используем score
-      executionPlans: [plan], // 🔥 массив
+      totalCostScore: score,
+      executionPlans: [plan],
     };
   }
 }

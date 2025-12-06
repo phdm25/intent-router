@@ -1,68 +1,80 @@
-import type { TxRequest, TxReceipt, ChainAdapter } from "../ChainAdapter";
-import type { ChainRef } from "../../domain/types.js";
-import type { Chain, Account } from "viem";
+import type { ChainAdapter, RawTx, TxReceipt } from "../ChainAdapter";
+import type { ChainRef } from "../../domain/chainref.schema";
+import type { ExecutionPlan, EvmCallPlan } from "../../domain/executionPlan";
 
-import { createWalletClient, createPublicClient, http } from "viem";
+import { createPublicClient, createWalletClient, http, type Chain } from "viem";
+import { privateKeyToAccount, type Account } from "viem/accounts";
+import { getChainConfigByRef } from "../../config/network";
 
+export interface EvmRawTx {
+  to: `0x${string}`;
+  data: `0x${string}`;
+  value: bigint;
+}
+
+/**
+ * EvmChainAdapter knows how to execute EVM-specific execution plans.
+ */
 export class EvmChainAdapter implements ChainAdapter {
+  public readonly chain: ChainRef;
+
   private readonly publicClient;
   private readonly walletClient;
+  private readonly account: Account;
 
-  /**
-   * @param chain - internal chain reference in your own DSL  (e.g. { type: "evm", id: 42161 })
-   * @param viemChain - VIEM Chain object (e.g. arbitrum, mainnet, optimism)
-   * @param rpcUrl - network RPC url
-   * @param account - executor EVM account
-   */
-  constructor(
-    public readonly chain: ChainRef,
-    private readonly viemChain: Chain,
-    private readonly rpcUrl: string,
-    private readonly account: Account
-  ) {
-    // Public client for reads + gas estimation
+  constructor(chainRef: ChainRef, privateKey: `0x${string}`) {
+    this.chain = chainRef;
+
+    const cfg = getChainConfigByRef(chainRef);
+    const viemChain = cfg.viemChain as Chain;
+
+    this.account = privateKeyToAccount(privateKey);
+
     this.publicClient = createPublicClient({
       chain: viemChain,
-      transport: http(rpcUrl),
+      transport: http(cfg.rpcUrl),
     });
 
-    // Wallet client for sending transactions
     this.walletClient = createWalletClient({
       chain: viemChain,
-      transport: http(rpcUrl),
-      account,
+      transport: http(cfg.rpcUrl),
+      account: this.account,
     });
   }
 
-  // ----------------------------------------------------------------------
-  // 1) Estimate gas
-  // ----------------------------------------------------------------------
-  async estimateGas(tx: TxRequest): Promise<bigint> {
-    return await this.publicClient.estimateGas({
-      account: this.account.address,
+  supports(plan: ExecutionPlan): boolean {
+    return (
+      plan.chain.type === "evm" &&
+      ["evm_swap", "evm_bridge", "evm_approve", "evm_unwrap"].includes(
+        plan.type
+      )
+    );
+  }
+
+  async buildRawTx(plan: ExecutionPlan): Promise<RawTx> {
+    if (!this.supports(plan)) {
+      throw new Error(
+        `[EvmChainAdapter] Plan not supported for chain ${this.chain.type}:${this.chain.id}`
+      );
+    }
+
+    const evmPlan = plan as EvmCallPlan;
+
+    const raw: EvmRawTx = {
+      to: evmPlan.to as `0x${string}`,
+      data: evmPlan.data as `0x${string}`,
+      value: evmPlan.value,
+    };
+
+    return raw;
+  }
+
+  async sendRawTx(raw: RawTx): Promise<TxReceipt> {
+    const tx = raw as EvmRawTx;
+
+    const hash = await this.walletClient.sendTransaction({
       to: tx.to,
       data: tx.data,
-      value: tx.value,
-    });
-  }
-
-  // ----------------------------------------------------------------------
-  // 2) Gas price (EIP-1559 or legacy)
-  // ----------------------------------------------------------------------
-  async getGasPrice(): Promise<bigint> {
-    return await this.publicClient.getGasPrice();
-  }
-
-  // ----------------------------------------------------------------------
-  // 3) Send transaction (correct multi-chain support)
-  // ----------------------------------------------------------------------
-  async sendTransaction(tx: TxRequest): Promise<TxReceipt> {
-    // 👉 IMPORTANT: chain MUST be viemChain from constructor
-    const hash = await this.walletClient.sendTransaction({
-      chain: this.viemChain,
-      account: this.account,
-      to: tx.to as `0x${string}`,
-      data: tx.data as `0x${string}`,
       value: tx.value,
     });
 

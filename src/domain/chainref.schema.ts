@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 export const ChainRefSchema = z.object({
-  type: z.literal("evm"),
-  id: z.number(),
+  type: z.enum(["evm", "near", "solana", "cosmos"]),
+  // For EVM: numeric chainId, for others we can use string IDs
+  id: z.union([z.number().int(), z.string()]),
 });
 
-export type ChainRef = z.output<typeof ChainRefSchema>;
+export type ChainRef = z.infer<typeof ChainRefSchema>;

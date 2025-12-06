@@ -1,43 +1,49 @@
-// -------------------------------------------------------------
-// ExecutionBuilder
-//
-// Converts a high-level Route (output of the router) into
-// a TxRequest that can be executed by ChainAdapter.
-//
-// We assume executionPlan has the following structure for EVM:
-// {
-//   type: "evm_swap",
-//   to: string,
-//   data: string,
-//   value: bigint
-// }
-//
-// More executionPlan types (bridges, cross-chain, near, solana)
-// can be added later.
-// -------------------------------------------------------------
+import type { Route } from "../domain/types";
+import type { ExecutionPlan } from "../domain/executionPlan";
+import type { ChainAdapter, RawTx } from "../chains/ChainAdapter";
+import type { ChainRef } from "../domain/chainref.schema";
 
-import type { Intent, Route } from "../domain/types";
-import type { TxRequest } from "../chains/ChainAdapter";
-import { ChainRef } from "../domain/chainref.schema";
-
-export interface BuiltTransaction {
-  chain: ChainRef;
-  tx: TxRequest;
+export interface BuiltStep {
+  plan: ExecutionPlan;
+  rawTx: RawTx;
 }
 
-export interface ExecutionBuilder {
-  build(intent: Intent, route: Route): Promise<BuiltTransaction[]>;
-}
+/**
+ * MultiChainExecutionBuilder walks through all execution plans inside Route
+ * and builds chain-specific raw transactions using registered adapters.
+ */
+export class MultiChainExecutionBuilder {
+  constructor(private readonly adapters: Map<string, ChainAdapter>) {}
 
-export class MultiStepExecutionBuilder implements ExecutionBuilder {
-  async build(intent: Intent, route: Route): Promise<BuiltTransaction[]> {
-    return route.executionPlans.map((step) => ({
-      chain: step.chain,
-      tx: {
-        to: step.to,
-        data: step.data,
-        value: step.value,
-      },
-    }));
+  private getAdapter(chain: ChainRef): ChainAdapter {
+    const key = `${chain.type}:${chain.id}`;
+    const adapter = this.adapters.get(key);
+
+    if (!adapter) {
+      throw new Error(
+        `[ExecutionBuilder] No adapter registered for chain ${key}`
+      );
+    }
+
+    return adapter;
+  }
+
+  async build(route: Route): Promise<BuiltStep[]> {
+    const steps: BuiltStep[] = [];
+
+    for (const plan of route.executionPlans) {
+      const adapter = this.getAdapter(plan.chain);
+
+      if (!adapter.supports(plan)) {
+        throw new Error(
+          `[ExecutionBuilder] Adapter for chain ${plan.chain.type}:${plan.chain.id} does not support plan type ${plan.type}`
+        );
+      }
+
+      const rawTx = await adapter.buildRawTx(plan);
+      steps.push({ plan, rawTx });
+    }
+
+    return steps;
   }
 }
